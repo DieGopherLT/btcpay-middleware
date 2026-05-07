@@ -1,0 +1,107 @@
+---
+title: Invoice examples
+description: Practical createInvoice / getInvoice patterns.
+---
+
+# Invoice examples
+
+## Minimal checkout
+
+```ts
+app.post(
+  '/checkout',
+  BTCPayMiddleware.createInvoice({
+    mapRequest: req => ({
+      amount: req.body.total,
+      currency: 'USD',
+    }),
+  }),
+  (_req, res) => res.json(res.locals.btcpayResponse)
+);
+```
+
+## With buyer data and order id
+
+```ts
+app.post(
+  '/checkout',
+  BTCPayMiddleware.createInvoice({
+    mapRequest: req => ({
+      amount: req.body.total,
+      currency: 'USD',
+      orderId: req.body.orderId,
+      buyerEmail: req.body.email,
+      description: req.body.productName,
+      metadata: {
+        productSku: req.body.sku,
+        sessionId: req.body.sessionId,
+      },
+    }),
+    transformResponse: invoice => ({
+      checkoutUrl: invoice.checkoutLink,
+      invoiceId: invoice.id,
+      expiresAt: invoice.expirationTime,
+    }),
+  }),
+  (_req, res) => res.json(res.locals.btcpayResponse)
+);
+```
+
+`orderId`, `buyerEmail`, and `description` are merged into BTCPay's `metadata` field on the wire; `metadata` you pass in is preserved alongside.
+
+## Restricting payment methods (BTC + Lightning)
+
+```ts
+BTCPayMiddleware.createInvoice({
+  mapRequest: req => ({
+    amount: req.body.total,
+    currency: 'USD',
+    checkout: {
+      paymentMethods: ['BTC', 'BTC-LightningNetwork'],
+      redirectURL: `${process.env.APP_URL}/orders/${req.body.orderId}`,
+      defaultLanguage: 'es-ES',
+    },
+  }),
+});
+```
+
+## Reading an invoice for reconciliation
+
+A scheduled job that polls until an invoice settles or expires:
+
+```ts
+import {
+  BTCPayClient,
+  BTCPayConfiguration,
+  InvoiceStatus,
+} from '@taloon/btcpay-middleware';
+
+const client = BTCPayClient.fromConfig(BTCPayConfiguration.getConfig());
+
+export async function reconcile(invoiceId: string) {
+  const invoice = await client.getInvoice(invoiceId);
+  if (invoice.status === InvoiceStatus.SETTLED) return 'paid';
+  if (invoice.status === InvoiceStatus.EXPIRED) return 'expired';
+  if (invoice.status === InvoiceStatus.INVALID) return 'invalid';
+  return 'open';
+}
+```
+
+## Routing the response yourself
+
+Skip `transformResponse` if you want full control on the handler:
+
+```ts
+import { BTCPayInvoice } from '@taloon/btcpay-middleware';
+
+app.post(
+  '/checkout',
+  BTCPayMiddleware.createInvoice({
+    mapRequest: req => ({ amount: req.body.total, currency: 'USD' }),
+  }),
+  (_req, res) => {
+    const invoice = res.locals.btcpayResponse as BTCPayInvoice;
+    return res.redirect(303, invoice.checkoutLink);
+  }
+);
+```

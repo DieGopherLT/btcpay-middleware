@@ -1,0 +1,77 @@
+---
+title: Configuration examples
+description: Common BTCPayMiddleware.configure() patterns.
+---
+
+# Configuration examples
+
+## Environment-only
+
+If your env vars are present at process start, `configure()` is optional — but calling it with no overrides is a useful explicit signal:
+
+```ts
+BTCPayMiddleware.configure({});
+```
+
+`BTCPAY_BASE_URL`, `BTCPAY_API_KEY`, `BTCPAY_STORE_ID`, and `BTCPAY_WEBHOOK_SECRET` are read on first construction.
+
+## Override per-environment
+
+```ts
+const isProduction = process.env.NODE_ENV === 'production';
+
+BTCPayMiddleware.configure({
+  baseURL: isProduction
+    ? 'https://btcpay.example.com'
+    : 'https://btcpay.staging.example.com',
+  apiKey: process.env.BTCPAY_API_KEY!,
+  storeId: process.env.BTCPAY_STORE_ID!,
+  webhookSecret: process.env.BTCPAY_WEBHOOK_SECRET,
+  errorHandling: isProduction ? 'next' : 'direct',
+});
+```
+
+## Centralised error handler
+
+When you want a single observability hook for every middleware:
+
+```ts
+import { BTCPayError } from '@taloon/btcpay-middleware';
+
+BTCPayMiddleware.configure({
+  onError: (err, req, res, next) => {
+    if (err instanceof BTCPayError) {
+      logger.warn('btcpay', { code: err.code, status: err.statusCode, path: req.path });
+    }
+    next(err);
+  },
+});
+```
+
+The lookup order in every middleware is: per-middleware `onError` -> global `config.onError` -> `errorHandling` mode.
+
+## Coexisting with `@taloon/nowpayments-middleware`
+
+```ts
+import { NowPaymentsMiddleware } from '@taloon/nowpayments-middleware';
+import { BTCPayMiddleware }      from '@taloon/btcpay-middleware';
+
+NowPaymentsMiddleware.configure({ apiKey: process.env.NOWPAYMENTS_API_KEY! });
+BTCPayMiddleware.configure({
+  baseURL: process.env.BTCPAY_BASE_URL!,
+  apiKey: process.env.BTCPAY_API_KEY!,
+  storeId: process.env.BTCPAY_STORE_ID!,
+});
+```
+
+Both packages namespace their `res.locals` (`nowPaymentsResponse` vs `btcpayResponse`), so a route can layer both without colliding.
+
+## Resetting between tests
+
+```ts
+import { BTCPayConfiguration } from '@taloon/btcpay-middleware';
+
+afterEach(() => {
+  BTCPayConfiguration.reset(); // re-reads env vars and clears overrides
+});
+```

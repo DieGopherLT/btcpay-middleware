@@ -1,0 +1,132 @@
+---
+title: Webhook examples
+description: Verifying and handling BTCPay webhooks.
+---
+
+# Webhook examples
+
+## Configuration in BTCPay
+
+In your BTCPay Server admin UI, register a webhook pointing at your public endpoint and copy the generated secret. Configure it on the middleware:
+
+```ts
+BTCPayMiddleware.configure({
+  webhookSecret: process.env.BTCPAY_WEBHOOK_SECRET,
+});
+```
+
+When `webhookSecret` is set, the middleware verifies `BTCPay-Sig: sha256=<hex>` over the raw body and rejects mismatches with `BTCPayWebhookSignatureError` (`statusCode: 401`). Without a secret, signature verification is skipped — fine for local development, never for production.
+
+## Mounting the route
+
+The body must arrive as a raw `Buffer` so the HMAC is computed on the bytes BTCPay actually signed:
+
+```ts
+import express from 'express';
+import { BTCPayMiddleware } from '@taloon/btcpay-middleware';
+
+const app = express();
+
+// Route-scoped raw parser. Don't apply this to the rest of your API.
+app.post(
+  '/webhooks/btcpay',
+  express.raw({ type: 'application/json' }),
+  BTCPayMiddleware.invoiceWebhook({
+    onSettled: payload => markPaid(payload.invoiceId),
+    onExpired: payload => markExpired(payload.invoiceId),
+    onInvalid: payload => markInvalid(payload.invoiceId),
+  })
+);
+```
+
+## All event callbacks
+
+```ts
+BTCPayMiddleware.invoiceWebhook({
+  onCreated:         payload => analytics.invoiceCreated(payload),
+  onReceivedPayment: payload => log('partial', payload),  // payment seen, may not be enough
+  onProcessing:      payload => log('mempool', payload),  // payment in mempool
+  onSettled:         payload => fulfilOrder(payload.invoiceId),
+  onPaymentSettled:  payload => log('payment-settled', payload), // sub-event per payment
+  onExpired:         payload => releaseHold(payload.invoiceId),
+  onInvalid:         payload => alertAccounting(payload),
+});
+```
+
+## Async handlers
+
+Callbacks may return a Promise. The middleware awaits them before responding `200 OK` so BTCPay considers the delivery successful only after your work is done.
+
+```ts
+BTCPayMiddleware.invoiceWebhook({
+  onSettled: async payload => {
+    await db.transaction(async trx => {
+      await markOrderPaid(trx, payload.invoiceId);
+      await sendReceipt(trx, payload.invoiceId);
+    });
+  },
+});
+```
+
+If a callback throws, the middleware delegates to the standard error path (per-middleware `onError` -> global `config.onError` -> `errorHandling` mode).
+
+## Manual signature checks
+
+If you need to verify the signature outside of Express (queue worker, batch import), use the exposed primitives:
+
+```ts
+import {
+  verifyWebhookSignature,
+  WEBHOOK_SIGNATURE_HEADER,
+} from '@taloon/btcpay-middleware';
+
+verifyWebhookSignature(
+  rawBuffer,
+  request.headers[WEBHOOK_SIGNATURE_HEADER] as string,
+  process.env.BTCPAY_WEBHOOK_SECRET!
+);
+```
+
+Throws `BTCPayWebhookSignatureError` on mismatch.
+
+## Idempotency
+
+BTCPay retries deliveries on failure. Use `originalDeliveryId` plus `invoiceId` + `type` as your idempotency key:
+
+```ts
+const handled = new Set<string>();
+
+BTCPayMiddleware.invoiceWebhook({
+  onSettled: async payload => {
+    const key = `${payload.invoiceId}:${payload.type}:${payload.originalDeliveryId}`;
+    if (handled.has(key)) return;
+    handled.add(key);
+    await fulfilOrder(payload.invoiceId);
+  },
+});
+```
+
+## Testing
+
+```ts
+import { createHmac } from 'crypto';
+import request from 'supertest';
+
+it('settles an invoice on InvoiceSettled', async () => {
+  const body = JSON.stringify({
+    type: 'InvoiceSettled',
+    invoiceId: 'inv-1',
+    storeId: 'store-1',
+  });
+  const sig = `sha256=${createHmac('sha256', process.env.BTCPAY_WEBHOOK_SECRET!)
+    .update(body)
+    .digest('hex')}`;
+
+  await request(app)
+    .post('/webhooks/btcpay')
+    .set('content-type', 'application/json')
+    .set('btcpay-sig', sig)
+    .send(body)
+    .expect(200);
+});
+```

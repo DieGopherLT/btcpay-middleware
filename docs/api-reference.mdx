@@ -1,0 +1,189 @@
+---
+title: API Reference
+description: Public exports of @taloon/btcpay-middleware.
+---
+
+# API Reference
+
+## `BTCPayMiddleware` namespace
+
+```ts
+import { BTCPayMiddleware } from '@taloon/btcpay-middleware';
+
+BTCPayMiddleware.configure(config);
+BTCPayMiddleware.createInvoice(options);
+BTCPayMiddleware.getInvoice(options);
+BTCPayMiddleware.invoiceWebhook(options);
+```
+
+You can also import each middleware as a named export — both styles are equivalent.
+
+---
+
+## `configure(config)`
+
+```ts
+interface BTCPayConfig {
+  baseURL: string;            // BTCPay Server URL, e.g. https://btcpay.example.com
+  apiKey: string;             // API key for the Greenfield API
+  storeId: string;            // Store id
+  webhookSecret?: string;     // HMAC secret matching the BTCPay webhook UI
+  errorHandling?: 'next' | 'direct';
+  onError?: ErrorHandler;
+}
+
+BTCPayMiddleware.configure(partial: Partial<BTCPayConfig>): void;
+```
+
+- Merges `partial` into the existing config (which is initially read from env vars).
+- Required keys (`baseURL`, `apiKey`, `storeId`) are validated lazily, on the first middleware call.
+- `errorHandling` is the fallback strategy when neither a per-middleware nor a global `onError` is provided:
+  - `'next'` (default) — call `next(error)` so your Express error handler picks it up.
+  - `'direct'` — write a JSON error body directly with the appropriate status code.
+
+---
+
+## `createInvoice(options)`
+
+```ts
+interface CreateInvoiceMiddlewareOptions {
+  mapRequest: (req: Request, res: Response) => CreateInvoiceRequest;
+  transformResponse?: (invoice: BTCPayInvoice) => unknown;
+  onError?: ErrorHandler;
+}
+```
+
+`mapRequest` produces the body sent to `POST /api/v1/stores/{storeId}/invoices`. `amount` and `currency` are required — anything else is optional.
+
+Result is stored on `res.locals.btcpayResponse` (raw `BTCPayInvoice` unless `transformResponse` is provided).
+
+```ts
+interface CreateInvoiceRequest {
+  amount: number | string;
+  currency: string;
+  orderId?: string;
+  buyerEmail?: string;
+  description?: string;
+  checkout?: InvoiceCheckoutOptions;
+  metadata?: Record<string, unknown>;
+}
+```
+
+`orderId`, `buyerEmail`, and `description` are flattened into BTCPay's `metadata` field on the wire (`orderId`, `buyerEmail`, `itemDesc` respectively).
+
+---
+
+## `getInvoice(options)`
+
+```ts
+interface GetInvoiceMiddlewareOptions {
+  mapRequest: (req: Request, res: Response) => string; // returns invoiceId
+  transformResponse?: (invoice: BTCPayInvoice) => unknown;
+  onError?: ErrorHandler;
+}
+```
+
+Reads `GET /api/v1/stores/{storeId}/invoices/{invoiceId}` and stores the result on `res.locals.btcpayResponse`.
+
+---
+
+## `invoiceWebhook(options)`
+
+```ts
+interface InvoiceWebhookMiddlewareOptions {
+  onCreated?:         (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onReceivedPayment?: (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onProcessing?:      (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onSettled?:         (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onPaymentSettled?:  (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onExpired?:         (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onInvalid?:         (payload: BTCPayWebhookPayload) => void | Promise<void>;
+  onError?: ErrorHandler;
+}
+```
+
+Mount with `express.raw({ type: 'application/json' })`. When `webhookSecret` is configured the `BTCPay-Sig: sha256=<hex>` header is verified against the raw body before dispatch. The middleware always responds `200 OK` on success and stores the parsed payload on `res.locals.btcpayResponse`.
+
+---
+
+## Types
+
+```ts
+enum InvoiceStatus {
+  NEW = 'New',
+  PROCESSING = 'Processing',
+  EXPIRED = 'Expired',
+  INVALID = 'Invalid',
+  SETTLED = 'Settled',
+}
+
+enum WebhookEventType {
+  INVOICE_CREATED = 'InvoiceCreated',
+  INVOICE_RECEIVED_PAYMENT = 'InvoiceReceivedPayment',
+  INVOICE_PROCESSING = 'InvoiceProcessing',
+  INVOICE_SETTLED = 'InvoiceSettled',
+  INVOICE_PAYMENT_SETTLED = 'InvoicePaymentSettled',
+  INVOICE_EXPIRED = 'InvoiceExpired',
+  INVOICE_INVALID = 'InvoiceInvalid',
+}
+
+interface BTCPayInvoice {
+  id: string;
+  storeId: string;
+  amount: string;
+  currency: string;
+  status: InvoiceStatus;
+  additionalStatus?: InvoiceAdditionalStatus;
+  checkoutLink: string;
+  monitoringExpiration: number;
+  expirationTime: number;
+  createdTime: number;
+  metadata?: Record<string, unknown>;
+}
+
+interface BTCPayWebhookPayload {
+  deliveryId: string;
+  webhookId: string;
+  originalDeliveryId: string;
+  isRedelivery: boolean;
+  type: WebhookEventType;
+  timestamp: number;
+  storeId: string;
+  invoiceId: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+---
+
+## Errors
+
+All errors inherit from `BTCPayError`:
+
+| Class                          | Code                       | statusCode |
+| ------------------------------ | -------------------------- | ---------- |
+| `BTCPayApiError`               | `API_ERROR`                | from BTCPay (4xx/5xx) |
+| `BTCPayConfigError`            | `CONFIG_ERROR`             | undefined  |
+| `BTCPayValidationError`        | `VALIDATION_ERROR`         | undefined  |
+| `BTCPayNetworkError`           | `NETWORK_ERROR`            | undefined  |
+| `BTCPayWebhookSignatureError` | `WEBHOOK_SIGNATURE_ERROR` | 401        |
+
+See [error-handling.mdx](./error-handling.mdx) for examples.
+
+---
+
+## Lower-level utilities
+
+```ts
+import {
+  BTCPayClient,
+  computeSignature,
+  verifyWebhookSignature,
+  WEBHOOK_SIGNATURE_HEADER,
+} from '@taloon/btcpay-middleware';
+```
+
+- `BTCPayClient` — direct HTTP client. Useful in scripts and tests.
+- `computeSignature(rawBody, secret)` — returns the hex SHA-256 HMAC.
+- `verifyWebhookSignature(rawBody, header, secret)` — throws `BTCPayWebhookSignatureError` on mismatch.
+- `WEBHOOK_SIGNATURE_HEADER` — the lowercase header name used by `req.headers`.

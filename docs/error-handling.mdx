@@ -1,0 +1,111 @@
+---
+title: Error handling
+description: Error hierarchy and the three-tier handler chain.
+---
+
+# Error handling
+
+Every middleware in `@taloon/btcpay-middleware` catches errors thrown during request mapping, HTTP calls, or callback execution and routes them through a deterministic chain.
+
+## Error hierarchy
+
+```ts
+import {
+  BTCPayError,
+  BTCPayApiError,
+  BTCPayConfigError,
+  BTCPayValidationError,
+  BTCPayNetworkError,
+  BTCPayWebhookSignatureError,
+} from '@taloon/btcpay-middleware';
+```
+
+| Class                          | Code                       | When                                                  |
+| ------------------------------ | -------------------------- | ----------------------------------------------------- |
+| `BTCPayApiError`               | `API_ERROR`                | BTCPay returned a 4xx/5xx response                    |
+| `BTCPayConfigError`            | `CONFIG_ERROR`             | Required config (baseURL/apiKey/storeId) is missing   |
+| `BTCPayValidationError`        | `VALIDATION_ERROR`         | Caller supplied invalid data (e.g. missing `mapRequest`) |
+| `BTCPayNetworkError`           | `NETWORK_ERROR`            | Axios failed with no response (DNS, ECONNREFUSED, …)  |
+| `BTCPayWebhookSignatureError` | `WEBHOOK_SIGNATURE_ERROR` | `BTCPay-Sig` header missing or HMAC mismatch (status 401) |
+
+All five extend `BTCPayError`, which carries `code`, optional `statusCode`, and optional `originalError`.
+
+## Three-tier handler chain
+
+Inside every middleware, errors are routed in this fixed order:
+
+1. **Per-middleware `onError`** — `createInvoice({ onError })`, etc. Highest priority.
+2. **Global `config.onError`** — set via `BTCPayMiddleware.configure({ onError })`.
+3. **`errorHandling` mode** (fallback):
+   - `'next'` (default) — `next(error)` is called; your Express error middleware handles it.
+   - `'direct'` — the middleware writes a JSON error body itself.
+
+```
+caller throws -> options.onError ? -> config.onError ? -> errorHandling mode
+```
+
+## Examples
+
+### Centralised handler
+
+```ts
+import { BTCPayError } from '@taloon/btcpay-middleware';
+
+BTCPayMiddleware.configure({
+  onError: (err, req, res, next) => {
+    if (err instanceof BTCPayError) {
+      logger.warn('btcpay', { code: err.code, status: err.statusCode, path: req.path });
+    }
+    next(err);
+  },
+});
+```
+
+### Per-route override
+
+```ts
+app.post(
+  '/checkout',
+  BTCPayMiddleware.createInvoice({
+    mapRequest: req => ({ amount: req.body.total, currency: 'USD' }),
+    onError: (err, _req, res, _next) => {
+      // Route-specific shape — bypass the global handler
+      res.status(502).json({ error: 'gateway_unavailable' });
+    },
+  })
+);
+```
+
+### Direct mode
+
+`errorHandling: 'direct'` is convenient for prototypes:
+
+```ts
+BTCPayMiddleware.configure({ errorHandling: 'direct' });
+```
+
+`BTCPayError` instances are serialised as `{ error: { code, message } }` with the error's `statusCode` (or `500` if unset). Anything else becomes `500 INTERNAL_ERROR / "An unexpected error occurred"`.
+
+### Express error middleware
+
+When `errorHandling` is `'next'` (default), wire a typed error handler:
+
+```ts
+import { ErrorRequestHandler } from 'express';
+import { BTCPayApiError, BTCPayWebhookSignatureError } from '@taloon/btcpay-middleware';
+
+const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof BTCPayWebhookSignatureError) {
+    return res.status(401).json({ error: err.code });
+  }
+  if (err instanceof BTCPayApiError) {
+    return res.status(err.statusCode ?? 502).json({
+      error: err.code,
+      message: err.message,
+    });
+  }
+  return res.status(500).json({ error: 'INTERNAL_ERROR' });
+};
+
+app.use(errorHandler);
+```

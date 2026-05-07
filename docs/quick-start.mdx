@@ -1,0 +1,99 @@
+---
+title: Quick start
+description: Five-minute introduction to @taloon/btcpay-middleware.
+---
+
+# Quick start
+
+`@taloon/btcpay-middleware` adds three Express middlewares for talking to a BTCPay Server: `createInvoice`, `getInvoice`, and `invoiceWebhook`. This page walks through a minimal end-to-end setup.
+
+## 1. Install
+
+```bash
+pnpm add @taloon/btcpay-middleware express
+```
+
+## 2. Configure
+
+`configure()` accepts a partial config and merges it with whatever was loaded from `process.env`. Call it once on startup.
+
+```ts
+import { BTCPayMiddleware } from '@taloon/btcpay-middleware';
+
+BTCPayMiddleware.configure({
+  baseURL: 'https://btcpay.example.com',
+  apiKey: process.env.BTCPAY_API_KEY!,
+  storeId: process.env.BTCPAY_STORE_ID!,
+  webhookSecret: process.env.BTCPAY_WEBHOOK_SECRET, // optional, recommended
+});
+```
+
+The required keys (`baseURL`, `apiKey`, `storeId`) are validated lazily on the first middleware call; missing values throw `BTCPayConfigError`.
+
+## 3. Create an invoice
+
+```ts
+import express from 'express';
+import { BTCPayMiddleware } from '@taloon/btcpay-middleware';
+
+const app = express();
+app.use(express.json());
+
+app.post(
+  '/checkout',
+  BTCPayMiddleware.createInvoice({
+    mapRequest: req => ({
+      amount: req.body.total,
+      currency: 'USD',
+      orderId: req.body.orderId,
+      buyerEmail: req.body.email,
+    }),
+    transformResponse: invoice => ({
+      checkoutUrl: invoice.checkoutLink,
+      invoiceId: invoice.id,
+      expiresAt: invoice.expirationTime,
+    }),
+  }),
+  (_req, res) => res.json(res.locals.btcpayResponse)
+);
+```
+
+Redirect the buyer to the returned `checkoutUrl` and BTCPay handles the rest.
+
+## 4. Listen for events
+
+BTCPay calls back to your server with HMAC-signed JSON bodies. To validate the signature you must capture the raw body:
+
+```ts
+app.post(
+  '/webhooks/btcpay',
+  express.raw({ type: 'application/json' }),
+  BTCPayMiddleware.invoiceWebhook({
+    onSettled:  payload => console.log('paid',    payload.invoiceId),
+    onExpired:  payload => console.log('expired', payload.invoiceId),
+    onInvalid:  payload => console.log('invalid', payload.invoiceId),
+  })
+);
+```
+
+The middleware verifies the `BTCPay-Sig` header (when `webhookSecret` is set), parses the body, dispatches to the matching callback, and replies `200 OK`. Invalid signatures trigger `BTCPayWebhookSignatureError` (`statusCode: 401`).
+
+## 5. Reconcile (optional)
+
+If you ever need to pull the current state of an invoice (cron job, support tooling, polling):
+
+```ts
+app.get(
+  '/invoices/:id',
+  BTCPayMiddleware.getInvoice({
+    mapRequest: req => req.params.id,
+  }),
+  (_req, res) => res.json(res.locals.btcpayResponse)
+);
+```
+
+## What's next
+
+- [API reference](./api-reference.mdx)
+- [Webhook examples](./webhook-examples.mdx)
+- [Error handling](./error-handling.mdx)
