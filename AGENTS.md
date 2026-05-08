@@ -154,6 +154,7 @@ The signature header is `BTCPay-Sig: sha256=<hex>`. We compute HMAC-SHA256 of th
 
 ## Cross-references
 
+- **[docs/btcpay-server-swagger.json](docs/btcpay-server-swagger.json)** — local copy of the BTCPay Greenfield API OpenAPI spec; use it as the authoritative reference for endpoint paths, request/response schemas, and enum values when adding or auditing types.
 - [BTCPay Greenfield API](https://docs.btcpayserver.org/API/Greenfield/v1/)
 - [BTCPay Webhooks](https://docs.btcpayserver.org/API/Greenfield/v1/#tag/Webhooks)
 - [Express.js docs](https://expressjs.com/)
