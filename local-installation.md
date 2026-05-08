@@ -7,6 +7,7 @@ This package is currently unpublished (alpha v0.1.0). To use it from another loc
 From this directory:
 
 ```bash
+pnpm run build
 pnpm link --global
 ```
 
@@ -15,6 +16,8 @@ In your consumer project:
 ```bash
 pnpm link --global @taloon/btcpay-middleware
 ```
+
+When you change source, re-run `pnpm run build` from this directory — no need to re-link.
 
 ## Option 2 — `pnpm pack` + install from tarball
 
@@ -44,4 +47,4 @@ If your consumer project lives in the same monorepo and a `pnpm-workspace.yaml` 
 }
 ```
 
-and run `pnpm install` from the workspace root.
+and run `pnpm install` from the workspace root. Build the package first (`pnpm run build` from this directory) so that `dist/` exists before the consumer imports it.
