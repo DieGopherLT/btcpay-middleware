@@ -11,6 +11,13 @@ export enum InvoiceAdditionalStatus {
   PAID_PARTIAL = 'PaidPartial',
   PAID_LATE = 'PaidLate',
   PAID_OVER = 'PaidOver',
+  MARKED = 'Marked',
+  INVALID = 'Invalid',
+}
+
+export enum InvoiceType {
+  STANDARD = 'Standard',
+  TOP_UP = 'TopUp',
 }
 
 export enum WebhookEventType {

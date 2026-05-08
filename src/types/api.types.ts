@@ -1,32 +1,32 @@
 import {
   InvoiceStatus,
   InvoiceAdditionalStatus,
+  InvoiceType,
   WebhookEventType,
 } from '@/constants/statuses';
-
-export type InvoiceCheckoutType = 'V1' | 'V2';
 
 export interface InvoiceCheckoutOptions {
   speedPolicy?: 'HighSpeed' | 'MediumSpeed' | 'LowSpeed' | 'LowMediumSpeed';
   paymentMethods?: string[];
   defaultPaymentMethod?: string;
+  lazyPaymentMethods?: boolean;
   expirationMinutes?: number;
   monitoringMinutes?: number;
   paymentTolerance?: number;
   redirectURL?: string;
   redirectAutomatically?: boolean;
   defaultLanguage?: string;
-  checkoutType?: InvoiceCheckoutType;
-  requiresRefundEmail?: boolean;
 }
 
 export interface CreateInvoiceRequest {
-  amount: number | string;
-  currency: string;
+  amount?: string;
+  currency?: string;
   orderId?: string;
   buyerEmail?: string;
   description?: string;
+  additionalSearchTerms?: string[];
   checkout?: InvoiceCheckoutOptions;
+  receipt?: BTCPayInvoiceReceipt;
   metadata?: Record<string, unknown>;
 }
 
@@ -40,7 +40,9 @@ export interface BTCPayInvoice {
   id: string;
   storeId: string;
   amount: string;
+  paidAmount?: string;
   currency: string;
+  type?: InvoiceType | `${InvoiceType}`;
   status: InvoiceStatus | `${InvoiceStatus}`;
   additionalStatus?: InvoiceAdditionalStatus | `${InvoiceAdditionalStatus}`;
   checkoutLink: string;

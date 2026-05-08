@@ -105,7 +105,9 @@ export class BTCPayClient {
       currency: data.currency,
       metadata,
     };
-    if (data.checkout) body.checkout = data.checkout;
+    if (data.checkout !== undefined) body.checkout = data.checkout;
+    if (data.receipt !== undefined) body.receipt = data.receipt;
+    if (data.additionalSearchTerms !== undefined) body.additionalSearchTerms = data.additionalSearchTerms;
     return body;
   }
 }

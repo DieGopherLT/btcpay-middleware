@@ -108,7 +108,7 @@ describe('BTCPayClient', () => {
       axiosMock.post.mockResolvedValueOnce({ data: expectedInvoice });
 
       const result = await client.createInvoice({
-        amount: 12.34,
+        amount: '12.34',
         currency: 'USD',
         orderId: 'order-42',
         buyerEmail: 'buyer@example.com',
@@ -119,7 +119,7 @@ describe('BTCPayClient', () => {
       expect(axiosMock.post).toHaveBeenCalledWith(
         '/api/v1/stores/store-1/invoices',
         {
-          amount: 12.34,
+          amount: '12.34',
           currency: 'USD',
           metadata: {
             customField: 'value',

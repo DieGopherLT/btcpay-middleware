@@ -30,7 +30,7 @@ describe('createInvoice middleware', () => {
     mockCreateInvoice.mockReset();
 
     req = {
-      body: { total: 100, currency: 'USD', orderId: 'order-1' },
+      body: { total: '100', currency: 'USD', orderId: 'order-1' },
     };
     res = { locals: {} };
     next = jest.fn();
@@ -66,7 +66,7 @@ describe('createInvoice middleware', () => {
     await middleware(req as Request, res as Response, next);
 
     expect(mockCreateInvoice).toHaveBeenCalledWith({
-      amount: 100,
+      amount: '100',
       currency: 'USD',
       orderId: 'order-1',
     });
@@ -99,7 +99,7 @@ describe('createInvoice middleware', () => {
 
   it('forwards to next(error) when amount is missing', async () => {
     const options: CreateInvoiceMiddlewareOptions = {
-      mapRequest: () => ({ amount: undefined as unknown as number, currency: 'USD' }),
+      mapRequest: () => ({ amount: undefined as unknown as string, currency: 'USD' }),
     };
     const middleware = createInvoice(options);
     await middleware(req as Request, res as Response, next);
@@ -109,7 +109,7 @@ describe('createInvoice middleware', () => {
 
   it('forwards to next(error) when currency is missing', async () => {
     const options: CreateInvoiceMiddlewareOptions = {
-      mapRequest: () => ({ amount: 1, currency: '' }),
+      mapRequest: () => ({ amount: '1', currency: '' }),
     };
     const middleware = createInvoice(options);
     await middleware(req as Request, res as Response, next);
@@ -119,7 +119,7 @@ describe('createInvoice middleware', () => {
   it('uses per-middleware onError when provided', async () => {
     const onError = jest.fn();
     const options: CreateInvoiceMiddlewareOptions = {
-      mapRequest: () => ({ amount: 0, currency: '' }),
+      mapRequest: () => ({ amount: '0', currency: '' }),
       onError,
     };
     const middleware = createInvoice(options);
@@ -140,7 +140,7 @@ describe('createInvoice middleware', () => {
     resetCreateInvoiceMiddleware();
 
     const middleware = createInvoice({
-      mapRequest: () => ({ amount: 0, currency: '' }),
+      mapRequest: () => ({ amount: '0', currency: '' }),
     });
     await middleware(req as Request, res as Response, next);
 
@@ -163,7 +163,7 @@ describe('createInvoice middleware', () => {
     res.json = json as never;
 
     const middleware = createInvoice({
-      mapRequest: () => ({ amount: 0, currency: '' }),
+      mapRequest: () => ({ amount: '0', currency: '' }),
     });
     await middleware(req as Request, res as Response, next);
 
@@ -189,7 +189,7 @@ describe('createInvoice middleware', () => {
     mockCreateInvoice.mockRejectedValueOnce(new Error('boom'));
 
     const middleware = createInvoice({
-      mapRequest: () => ({ amount: 1, currency: 'USD' }),
+      mapRequest: () => ({ amount: '1', currency: 'USD' }),
     });
     await middleware(req as Request, res as Response, next);
 
