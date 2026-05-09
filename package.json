@@ -10,7 +10,9 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
+  "packageManager": "pnpm@10.28.1",
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "build:watch": "tsc -p tsconfig.build.json --watch",
     "clean": "rm -rf dist",
@@ -22,7 +24,10 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "type-check": "tsc --noEmit",
-    "prepublishOnly": "pnpm run clean && pnpm run type-check && pnpm run build"
+    "prepublishOnly": "pnpm run clean && pnpm run type-check && pnpm run build",
+    "publish:patch": "pnpm version patch && pnpm publish",
+    "publish:minor": "pnpm version minor && pnpm publish",
+    "publish:major": "pnpm version major && pnpm publish"
   },
   "keywords": [
     "btcpay",
