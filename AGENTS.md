@@ -41,7 +41,7 @@ src/
 
 ## Intentional differences
 
-1. **Invoice domain naming** (`createInvoice`, `invoiceWebhook`) — BTCPay does not have a deposit-address concept, so we never expose `pay_address`.
+1. **Invoice domain naming** (`createInvoice`, `invoiceWebhook`) — BTCPay organizes payment data under `paymentMethods` (per the Greenfield API). When `fetchPaymentMethods: true` is passed to `createInvoice`, the middleware fetches the invoice's payment methods and attaches them as `paymentMethods: BTCPayPaymentMethod[]` in `res.locals.btcpayResponse`. The library exposes the native BTCPay array; extracting `destination` (BTC address) or `amount` for a specific method (e.g., `BTC-CHAIN`) is the consumer's responsibility.
 2. **HMAC webhook signature is first-class.** When `webhookSecret` is configured, `invoiceWebhook` verifies `BTCPay-Sig: sha256=<hex>` over the raw body. This requires `express.raw({ type: 'application/json' })` upstream.
 3. **Client receives config explicitly** (`BTCPayClient.fromConfig(...)`) — no hidden coupling between client and singleton. The middlewares are the ones that read the singleton.
 4. **`res.locals.btcpayResponse`** namespace, so this package can coexist with `@taloon/nowpayments-middleware` in the same app.

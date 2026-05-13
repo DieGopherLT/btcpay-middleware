@@ -4,6 +4,7 @@ import { BaseMiddleware } from '@/middlewares/base/BaseMiddleware';
 import { BTCPayConfiguration } from '@/config/BTCPayConfig';
 import { CreateInvoiceMiddlewareOptions, ExpressMiddleware } from '@/types';
 import { BTCPayValidationError } from '@/utils/errors';
+import { BTCPayInvoiceWithPaymentMethods } from '@/types/api.types';
 
 class CreateInvoiceMiddleware extends BaseMiddleware {
   private client: BTCPayClient;
@@ -40,11 +41,20 @@ class CreateInvoiceMiddleware extends BaseMiddleware {
 
         const response = await this.client.createInvoice(invoiceData);
 
-        const transformedResponse = options.transformResponse
-          ? options.transformResponse(response)
-          : response;
+        if (options.fetchPaymentMethods) {
+          const paymentMethods = await this.client.getPaymentMethods(response.id);
+          const enriched: BTCPayInvoiceWithPaymentMethods = { ...response, paymentMethods };
+          const transformedResponse = options.transformResponse
+            ? options.transformResponse(enriched)
+            : enriched;
+          this.saveToLocals(res, transformedResponse);
+        } else {
+          const transformedResponse = options.transformResponse
+            ? options.transformResponse(response)
+            : response;
+          this.saveToLocals(res, transformedResponse);
+        }
 
-        this.saveToLocals(res, transformedResponse);
         next();
       } catch (error) {
         await this.handleError(error, req, res, next, options.onError);

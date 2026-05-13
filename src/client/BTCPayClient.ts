@@ -5,7 +5,7 @@ import {
   BTCPayNetworkError,
 } from '@/utils/errors';
 import { BTCPayConfig } from '@/types/middleware.types';
-import { CreateInvoiceRequest, BTCPayInvoice } from '@/types/api.types';
+import { CreateInvoiceRequest, BTCPayInvoice, BTCPayPaymentMethod } from '@/types/api.types';
 
 interface BTCPayClientOptions {
   baseURL: string;
@@ -53,6 +53,18 @@ export class BTCPayClient {
     const response = await this.axiosInstance.post<BTCPayInvoice>(
       `/api/v1/stores/${this.storeId}/invoices`,
       body
+    );
+    return response.data;
+  }
+
+  async getPaymentMethods(invoiceId: string): Promise<BTCPayPaymentMethod[]> {
+    if (!invoiceId) {
+      throw new BTCPayConfigError(
+        'BTCPayClient.getPaymentMethods: invoiceId is required'
+      );
+    }
+    const response = await this.axiosInstance.get<BTCPayPaymentMethod[]>(
+      `/api/v1/stores/${this.storeId}/invoices/${invoiceId}/payment-methods`
     );
     return response.data;
   }

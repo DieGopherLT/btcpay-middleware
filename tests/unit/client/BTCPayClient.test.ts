@@ -189,6 +189,66 @@ describe('BTCPayClient', () => {
     });
   });
 
+  describe('getPaymentMethods', () => {
+    it('GETs /api/v1/stores/:storeId/invoices/:invoiceId/payment-methods', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      const methods = [
+        {
+          paymentMethodId: 'BTC-CHAIN',
+          currency: 'BTC',
+          destination: 'bc1qexample',
+          paymentLink: 'bitcoin:bc1qexample?amount=0.00015',
+          amount: '0.00015',
+          due: '0.00015',
+          rate: '64000',
+          activated: true,
+        },
+      ];
+      axiosMock.get.mockResolvedValueOnce({ data: methods });
+
+      const result = await client.getPaymentMethods('inv-1');
+
+      expect(axiosMock.get).toHaveBeenCalledWith(
+        '/api/v1/stores/store-1/invoices/inv-1/payment-methods'
+      );
+      expect(result).toEqual(methods);
+    });
+
+    it('throws BTCPayConfigError when invoiceId is empty', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      await expect(client.getPaymentMethods('')).rejects.toThrow(BTCPayConfigError);
+    });
+
+    it('propagates BTCPayApiError on non-2xx response', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      const interceptorErrorHandler = (
+        axiosMock.interceptors.response.use as jest.Mock
+      ).mock.calls[0][1] as (e: unknown) => never;
+
+      axiosMock.get.mockImplementationOnce(() => {
+        const err = {
+          message: 'Not Found',
+          response: { status: 404, data: { message: 'Invoice not found' } },
+        };
+        return Promise.reject(interceptorErrorHandler(err));
+      });
+
+      await expect(client.getPaymentMethods('inv-missing')).rejects.toThrow(BTCPayApiError);
+    });
+  });
+
   describe('fromConfig', () => {
     it('builds a client from a BTCPayConfig object', () => {
       const client = BTCPayClient.fromConfig({

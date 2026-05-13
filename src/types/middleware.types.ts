@@ -35,6 +35,7 @@ export interface CreateInvoiceMiddlewareOptions {
   mapRequest: RequestMapper<CreateInvoiceRequest>;
   transformResponse?: ResponseTransformer<BTCPayInvoice, unknown>;
   onError?: ErrorHandler;
+  fetchPaymentMethods?: boolean;
 }
 
 export interface GetInvoiceMiddlewareOptions {

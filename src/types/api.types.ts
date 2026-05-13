@@ -56,6 +56,21 @@ export interface BTCPayInvoice {
   receipt?: BTCPayInvoiceReceipt;
 }
 
+export interface BTCPayPaymentMethod {
+  paymentMethodId: string;
+  currency: string;
+  destination: string;
+  paymentLink: string | null;
+  amount: string;
+  due: string;
+  rate: string;
+  activated: boolean;
+}
+
+export interface BTCPayInvoiceWithPaymentMethods extends BTCPayInvoice {
+  paymentMethods: BTCPayPaymentMethod[];
+}
+
 export interface BTCPayWebhookPayload {
   deliveryId: string;
   webhookId: string;

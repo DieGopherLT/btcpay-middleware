@@ -4,9 +4,13 @@ import { BTCPayValidationError } from '@/utils/errors';
 import { BTCPayConfiguration } from '@/config/BTCPayConfig';
 
 const mockCreateInvoice = jest.fn();
+const mockGetPaymentMethods = jest.fn();
 jest.mock('@/client/BTCPayClient', () => ({
   BTCPayClient: {
-    fromConfig: jest.fn(() => ({ createInvoice: mockCreateInvoice })),
+    fromConfig: jest.fn(() => ({
+      createInvoice: mockCreateInvoice,
+      getPaymentMethods: mockGetPaymentMethods,
+    })),
   },
 }));
 
@@ -28,6 +32,7 @@ describe('createInvoice middleware', () => {
     });
     resetCreateInvoiceMiddleware();
     mockCreateInvoice.mockReset();
+    mockGetPaymentMethods.mockReset();
 
     req = {
       body: { total: '100', currency: 'USD', orderId: 'order-1' },
@@ -196,6 +201,77 @@ describe('createInvoice middleware', () => {
     expect(status).toHaveBeenCalledWith(500);
     expect(json).toHaveBeenCalledWith({
       error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+    });
+  });
+
+  describe('fetchPaymentMethods option', () => {
+    const baseInvoice = {
+      id: 'inv-pm',
+      storeId: 'store-1',
+      amount: '100',
+      currency: 'USD',
+      status: 'New',
+      checkoutLink: 'https://btcpay.example.com/i/inv-pm',
+      monitoringExpiration: 0,
+      expirationTime: 0,
+      createdTime: 0,
+    };
+
+    const paymentMethods = [
+      {
+        paymentMethodId: 'BTC-CHAIN',
+        currency: 'BTC',
+        destination: 'bc1qexample',
+        paymentLink: 'bitcoin:bc1qexample?amount=0.00015',
+        amount: '0.00015',
+        due: '0.00015',
+        rate: '64000',
+        activated: true,
+      },
+    ];
+
+    it('fetches payment methods and saves BTCPayInvoiceWithPaymentMethods to locals', async () => {
+      mockCreateInvoice.mockResolvedValueOnce(baseInvoice);
+      mockGetPaymentMethods.mockResolvedValueOnce(paymentMethods);
+
+      const middleware = createInvoice({
+        mapRequest: r => ({ amount: r.body.total, currency: r.body.currency }),
+        fetchPaymentMethods: true,
+      });
+      await middleware(req as Request, res as Response, next);
+
+      expect(mockGetPaymentMethods).toHaveBeenCalledWith('inv-pm');
+      expect(res.locals!.btcpayResponse).toEqual({
+        ...baseInvoice,
+        paymentMethods,
+      });
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it('passes error to next when getPaymentMethods fails', async () => {
+      mockCreateInvoice.mockResolvedValueOnce(baseInvoice);
+      mockGetPaymentMethods.mockRejectedValueOnce(new Error('network error'));
+
+      const middleware = createInvoice({
+        mapRequest: r => ({ amount: r.body.total, currency: r.body.currency }),
+        fetchPaymentMethods: true,
+      });
+      await middleware(req as Request, res as Response, next);
+
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+      expect(res.locals!.btcpayResponse).toBeUndefined();
+    });
+
+    it('does not call getPaymentMethods when fetchPaymentMethods is absent', async () => {
+      mockCreateInvoice.mockResolvedValueOnce(baseInvoice);
+
+      const middleware = createInvoice({
+        mapRequest: r => ({ amount: r.body.total, currency: r.body.currency }),
+      });
+      await middleware(req as Request, res as Response, next);
+
+      expect(mockGetPaymentMethods).not.toHaveBeenCalled();
+      expect(res.locals!.btcpayResponse).toEqual(baseInvoice);
     });
   });
 });
