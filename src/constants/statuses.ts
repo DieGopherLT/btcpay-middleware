@@ -28,7 +28,25 @@ export enum WebhookEventType {
   INVOICE_PAYMENT_SETTLED = 'InvoicePaymentSettled',
   INVOICE_EXPIRED = 'InvoiceExpired',
   INVOICE_INVALID = 'InvoiceInvalid',
+  PAYOUT_CREATED = 'PayoutCreated',
+  PAYOUT_APPROVED = 'PayoutApproved',
+  PAYOUT_UPDATED = 'PayoutUpdated',
+}
+
+export enum PayoutState {
+  AWAITING_APPROVAL = 'AwaitingApproval',
+  AWAITING_PAYMENT = 'AwaitingPayment',
+  IN_PROGRESS = 'InProgress',
+  COMPLETED = 'Completed',
+  CANCELLED = 'Cancelled',
+}
+
+export enum PayoutMethod {
+  BTC_CHAIN = 'BTC-CHAIN',
+  BTC_LN = 'BTC-LN',
 }
 
 export const ALL_INVOICE_STATUSES = Object.values(InvoiceStatus);
 export const ALL_WEBHOOK_EVENT_TYPES = Object.values(WebhookEventType);
+export const ALL_PAYOUT_STATES = Object.values(PayoutState);
+export const ALL_PAYOUT_METHODS = Object.values(PayoutMethod);

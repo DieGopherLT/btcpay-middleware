@@ -3,6 +3,8 @@ import {
   InvoiceAdditionalStatus,
   InvoiceType,
   WebhookEventType,
+  PayoutState,
+  PayoutMethod,
 } from '@/constants/statuses';
 
 export interface InvoiceCheckoutOptions {
@@ -86,4 +88,49 @@ export interface BTCPayWebhookPayload {
   partiallyPaid?: boolean;
   paymentMethodId?: string;
   payment?: Record<string, unknown>;
+}
+
+export interface CreatePayoutRequest {
+  destination: string;
+  amount: string;
+  payoutMethodId: PayoutMethod | `${PayoutMethod}`;
+  approved?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PayoutPaymentProof {
+  proofType: string;
+  link?: string;
+  id?: string;
+  [key: string]: unknown;
+}
+
+export interface BTCPayPayout {
+  id: string;
+  revision: number;
+  pullPaymentId?: string;
+  date: string;
+  destination: string;
+  originalCurrency: string;
+  originalAmount: string;
+  payoutCurrency: string;
+  payoutAmount?: string | null;
+  payoutMethodId: PayoutMethod | `${PayoutMethod}`;
+  state: PayoutState | `${PayoutState}`;
+  paymentProof?: PayoutPaymentProof | null;
+  metadata?: Record<string, unknown>;
+}
+
+// Permissive shape: Greenfield spec lacks a dedicated WebhookPayoutEvent schema; tighten when validated against a live instance.
+export interface BTCPayPayoutWebhookPayload {
+  deliveryId: string;
+  webhookId: string;
+  originalDeliveryId: string;
+  isRedelivery: boolean;
+  type: WebhookEventType | `${WebhookEventType}`;
+  timestamp: number;
+  storeId: string;
+  payoutId: string;
+  payoutState?: PayoutState | `${PayoutState}`;
+  [key: string]: unknown;
 }

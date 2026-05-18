@@ -3,6 +3,9 @@ import {
   CreateInvoiceRequest,
   BTCPayInvoice,
   BTCPayWebhookPayload,
+  CreatePayoutRequest,
+  BTCPayPayout,
+  BTCPayPayoutWebhookPayload,
 } from './api.types';
 
 export type ErrorHandlingMode = 'next' | 'direct';
@@ -57,6 +60,28 @@ export interface InvoiceWebhookCallbacks {
 }
 
 export interface InvoiceWebhookMiddlewareOptions extends InvoiceWebhookCallbacks {
+  onError?: ErrorHandler;
+}
+
+export interface CreatePayoutMiddlewareOptions {
+  mapRequest: RequestMapper<CreatePayoutRequest>;
+  transformResponse?: ResponseTransformer<BTCPayPayout, unknown>;
+  onError?: ErrorHandler;
+}
+
+export interface GetPayoutMiddlewareOptions {
+  mapRequest: RequestMapper<string>;
+  transformResponse?: ResponseTransformer<BTCPayPayout, unknown>;
+  onError?: ErrorHandler;
+}
+
+export interface PayoutWebhookCallbacks {
+  onPayoutCreated?: AsyncCallback<BTCPayPayoutWebhookPayload>;
+  onPayoutApproved?: AsyncCallback<BTCPayPayoutWebhookPayload>;
+  onPayoutUpdated?: AsyncCallback<BTCPayPayoutWebhookPayload>;
+}
+
+export interface PayoutWebhookMiddlewareOptions extends PayoutWebhookCallbacks {
   onError?: ErrorHandler;
 }
 
