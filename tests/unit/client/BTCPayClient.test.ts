@@ -249,6 +249,114 @@ describe('BTCPayClient', () => {
     });
   });
 
+  describe('createPayout', () => {
+    it('POSTs to /api/v1/stores/:storeId/payouts with approved=true by default', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      const expectedPayout = {
+        id: 'payout-1',
+        revision: 0,
+        date: '1700000000',
+        destination: 'bc1qexample',
+        originalCurrency: 'USD',
+        originalAmount: '50.00',
+        payoutCurrency: 'BTC',
+        payoutMethodId: 'BTC-CHAIN',
+        state: 'AwaitingPayment',
+      };
+      axiosMock.post.mockResolvedValueOnce({ data: expectedPayout });
+
+      const result = await client.createPayout({
+        destination: 'bc1qexample',
+        amount: '50.00',
+        payoutMethodId: 'BTC-CHAIN',
+        metadata: { referralId: 'ref-42' },
+      });
+
+      expect(axiosMock.post).toHaveBeenCalledWith(
+        '/api/v1/stores/store-1/payouts',
+        {
+          destination: 'bc1qexample',
+          amount: '50.00',
+          payoutMethodId: 'BTC-CHAIN',
+          approved: true,
+          metadata: { referralId: 'ref-42' },
+        }
+      );
+      expect(result).toEqual(expectedPayout);
+    });
+
+    it('passes approved=false through when explicitly set', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      axiosMock.post.mockResolvedValueOnce({ data: {} });
+
+      await client.createPayout({
+        destination: 'bc1qexample',
+        amount: '10',
+        payoutMethodId: 'BTC-CHAIN',
+        approved: false,
+      });
+
+      expect(axiosMock.post).toHaveBeenCalledWith(
+        '/api/v1/stores/store-1/payouts',
+        expect.objectContaining({ approved: false })
+      );
+    });
+
+    it('omits metadata key when not provided', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      axiosMock.post.mockResolvedValueOnce({ data: {} });
+
+      await client.createPayout({
+        destination: 'bc1qexample',
+        amount: '10',
+        payoutMethodId: 'BTC-CHAIN',
+      });
+
+      const body = axiosMock.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('metadata');
+    });
+  });
+
+  describe('getPayout', () => {
+    it('GETs /api/v1/stores/:storeId/payouts/:payoutId', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      const payout = { id: 'payout-1', state: 'Completed' };
+      axiosMock.get.mockResolvedValueOnce({ data: payout });
+
+      const result = await client.getPayout('payout-1');
+
+      expect(axiosMock.get).toHaveBeenCalledWith(
+        '/api/v1/stores/store-1/payouts/payout-1'
+      );
+      expect(result).toEqual(payout);
+    });
+
+    it('throws BTCPayConfigError when payoutId is empty', async () => {
+      const client = new BTCPayClient({
+        baseURL: 'https://btcpay.example.com',
+        apiKey: 'apikey-123',
+        storeId: 'store-1',
+      });
+      await expect(client.getPayout('')).rejects.toThrow(BTCPayConfigError);
+    });
+  });
+
   describe('fromConfig', () => {
     it('builds a client from a BTCPayConfig object', () => {
       const client = BTCPayClient.fromConfig({

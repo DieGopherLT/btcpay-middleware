@@ -5,7 +5,13 @@ import {
   BTCPayNetworkError,
 } from '@/utils/errors';
 import { BTCPayConfig } from '@/types/middleware.types';
-import { CreateInvoiceRequest, BTCPayInvoice, BTCPayPaymentMethod } from '@/types/api.types';
+import {
+  CreateInvoiceRequest,
+  BTCPayInvoice,
+  BTCPayPaymentMethod,
+  CreatePayoutRequest,
+  BTCPayPayout,
+} from '@/types/api.types';
 
 interface BTCPayClientOptions {
   baseURL: string;
@@ -77,6 +83,34 @@ export class BTCPayClient {
     }
     const response = await this.axiosInstance.get<BTCPayInvoice>(
       `/api/v1/stores/${this.storeId}/invoices/${invoiceId}`
+    );
+    return response.data;
+  }
+
+  async createPayout(data: CreatePayoutRequest): Promise<BTCPayPayout> {
+    const body: Record<string, unknown> = {
+      destination: data.destination,
+      amount: data.amount,
+      payoutMethodId: data.payoutMethodId,
+      approved: data.approved ?? true,
+    };
+    if (data.metadata !== undefined) body.metadata = data.metadata;
+
+    const response = await this.axiosInstance.post<BTCPayPayout>(
+      `/api/v1/stores/${this.storeId}/payouts`,
+      body
+    );
+    return response.data;
+  }
+
+  async getPayout(payoutId: string): Promise<BTCPayPayout> {
+    if (!payoutId) {
+      throw new BTCPayConfigError(
+        'BTCPayClient.getPayout: payoutId is required'
+      );
+    }
+    const response = await this.axiosInstance.get<BTCPayPayout>(
+      `/api/v1/stores/${this.storeId}/payouts/${payoutId}`
     );
     return response.data;
   }
