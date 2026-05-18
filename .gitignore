@@ -34,10 +34,6 @@ node_modules/
 .yarn-integrity
 
 # Environment variables
-.env
-.env.test
-.env.local
-.env.production
 
 # Build output
 dist/
@@ -64,3 +60,4 @@ Thumbs.db
 ## LLM directories
 .claude/settings.local.json
 .serena
+config.bat

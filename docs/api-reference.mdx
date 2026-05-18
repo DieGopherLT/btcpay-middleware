@@ -14,6 +14,9 @@ BTCPayMiddleware.configure(config);
 BTCPayMiddleware.createInvoice(options);
 BTCPayMiddleware.getInvoice(options);
 BTCPayMiddleware.invoiceWebhook(options);
+BTCPayMiddleware.createPayout(options);
+BTCPayMiddleware.getPayout(options);
+BTCPayMiddleware.payoutWebhook(options);
 ```
 
 You can also import each middleware as a named export — both styles are equivalent.
@@ -106,6 +109,71 @@ Mount with `express.raw({ type: 'application/json' })`. When `webhookSecret` is 
 
 ---
 
+## `createPayout(options)`
+
+```ts
+interface CreatePayoutMiddlewareOptions {
+  mapRequest: (req: Request, res: Response) => CreatePayoutRequest;
+  transformResponse?: (payout: BTCPayPayout) => unknown;
+  onError?: ErrorHandler;
+}
+
+interface CreatePayoutRequest {
+  destination: string;          // wallet address (or BIP21 url)
+  amount: string;               // amount in the store's default currency
+  payoutMethodId: PayoutMethod; // 'BTC-CHAIN' | 'BTC-LN'
+  approved?: boolean;           // defaults to true (auto-approve)
+  metadata?: Record<string, unknown>;
+}
+```
+
+`mapRequest` produces the body sent to `POST /api/v1/stores/{storeId}/payouts`. `destination`, `amount`, and `payoutMethodId` are required.
+
+By default the middleware sets `approved: true`, so the payout is enqueued for the configured **payout processor** (on-chain or Lightning) in a single round-trip. Pass `approved: false` to leave the payout in `AwaitingApproval` for manual review.
+
+> **Pre-requisite**: the store must have a payout processor configured in BTCPay (UI: *Store Settings → Payouts → Configure*). Without one, approved payouts stay in the queue and the transaction is never broadcast. This library does not manage that configuration.
+
+The `metadata` field is a transparent pass-through — useful to stamp internal identifiers (e.g. `referralId`, `userId`) that show up on later webhook events for reconciliation.
+
+Result is stored on `res.locals.btcpayResponse` as a `BTCPayPayout` (or whatever `transformResponse` returns).
+
+---
+
+## `getPayout(options)`
+
+```ts
+interface GetPayoutMiddlewareOptions {
+  mapRequest: (req: Request, res: Response) => string; // returns payoutId
+  transformResponse?: (payout: BTCPayPayout) => unknown;
+  onError?: ErrorHandler;
+}
+```
+
+Reads `GET /api/v1/stores/{storeId}/payouts/{payoutId}` and stores the result on `res.locals.btcpayResponse`. Inspect `state` (`AwaitingApproval` / `AwaitingPayment` / `InProgress` / `Completed` / `Cancelled`) and `paymentProof` to drive reconciliation.
+
+---
+
+## `payoutWebhook(options)`
+
+```ts
+interface PayoutWebhookMiddlewareOptions {
+  onPayoutCreated?:  (payload: BTCPayPayoutWebhookPayload) => void | Promise<void>;
+  onPayoutApproved?: (payload: BTCPayPayoutWebhookPayload) => void | Promise<void>;
+  onPayoutUpdated?:  (payload: BTCPayPayoutWebhookPayload) => void | Promise<void>;
+  onError?: ErrorHandler;
+}
+```
+
+Mount with `express.raw({ type: 'application/json' })` and signs identically to `invoiceWebhook`. The three events are the only ones BTCPay emits for payouts:
+
+- `PayoutCreated` — fires when a payout is created (server-side or via pull payment claim).
+- `PayoutApproved` — fires when a payout is approved (in this lib, typically in the same call as create).
+- `PayoutUpdated` — covers every subsequent state transition: `AwaitingPayment → InProgress → Completed` (or `Cancelled`). Inspect `payload.state` and `payload.paymentProof` to decide what to do.
+
+> **Webhook payload shape note**: BTCPay's Greenfield spec does not publish a dedicated schema for payout webhook payloads (unlike `WebhookInvoiceSettledEvent` et al.). This lib types known base fields strictly and allows any additional field via `[key: string]: unknown`. Types will be tightened in a future release once the exact contract is validated against a live instance.
+
+---
+
 ## Types
 
 ```ts
@@ -125,6 +193,22 @@ enum WebhookEventType {
   INVOICE_PAYMENT_SETTLED = 'InvoicePaymentSettled',
   INVOICE_EXPIRED = 'InvoiceExpired',
   INVOICE_INVALID = 'InvoiceInvalid',
+  PAYOUT_CREATED = 'PayoutCreated',
+  PAYOUT_APPROVED = 'PayoutApproved',
+  PAYOUT_UPDATED = 'PayoutUpdated',
+}
+
+enum PayoutState {
+  AWAITING_APPROVAL = 'AwaitingApproval',
+  AWAITING_PAYMENT = 'AwaitingPayment',
+  IN_PROGRESS = 'InProgress',
+  COMPLETED = 'Completed',
+  CANCELLED = 'Cancelled',
+}
+
+enum PayoutMethod {
+  BTC_CHAIN = 'BTC-CHAIN',
+  BTC_LN = 'BTC-LN',
 }
 
 interface BTCPayInvoice {
@@ -151,6 +235,35 @@ interface BTCPayWebhookPayload {
   storeId: string;
   invoiceId: string;
   metadata?: Record<string, unknown>;
+}
+
+interface BTCPayPayout {
+  id: string;
+  revision: number;
+  pullPaymentId?: string;
+  date: string;
+  destination: string;
+  originalCurrency: string;
+  originalAmount: string;
+  payoutCurrency: string;
+  payoutAmount?: string | null;
+  payoutMethodId: PayoutMethod;
+  state: PayoutState;
+  paymentProof?: PayoutPaymentProof | null;
+  metadata?: Record<string, unknown>;
+}
+
+interface BTCPayPayoutWebhookPayload {
+  deliveryId: string;
+  webhookId: string;
+  originalDeliveryId: string;
+  isRedelivery: boolean;
+  type: WebhookEventType;
+  timestamp: number;
+  storeId: string;
+  payoutId: string;
+  payoutState?: PayoutState;
+  [key: string]: unknown; // permissive — see "payload shape note" above
 }
 ```
 
