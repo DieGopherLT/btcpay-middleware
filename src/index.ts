@@ -2,6 +2,9 @@ import { BTCPayConfiguration } from '@/config/BTCPayConfig';
 import { createInvoice } from '@/middlewares/createInvoice';
 import { getInvoice } from '@/middlewares/getInvoice';
 import { invoiceWebhook } from '@/middlewares/webhooks/invoiceWebhook';
+import { createPayout } from '@/middlewares/createPayout';
+import { getPayout } from '@/middlewares/getPayout';
+import { payoutWebhook } from '@/middlewares/webhooks/payoutWebhook';
 import { BTCPayClient } from '@/client/BTCPayClient';
 
 export * from '@/types';
@@ -17,6 +20,9 @@ export {
   createInvoice,
   getInvoice,
   invoiceWebhook,
+  createPayout,
+  getPayout,
+  payoutWebhook,
   BTCPayClient,
   BTCPayConfiguration,
 };
@@ -26,4 +32,7 @@ export const BTCPayMiddleware = {
   createInvoice,
   getInvoice,
   invoiceWebhook,
+  createPayout,
+  getPayout,
+  payoutWebhook,
 };
