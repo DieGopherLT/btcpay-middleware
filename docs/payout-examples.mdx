@@ -1,0 +1,141 @@
+---
+title: Payout examples
+description: Automated, server-side payout flows on top of BTCPay Server.
+---
+
+# Payout examples
+
+> **Pre-requisite (read this first)**: this lib drives BTCPay's `POST /api/v1/stores/{storeId}/payouts` endpoint with auto-approval. For approved payouts to actually be broadcast on-chain or via Lightning, the store **must have a payout processor configured** (BTCPay UI: *Store Settings → Payouts → Configure*; or via API under `/api/v1/stores/{storeId}/payout-processors`). Without it, payouts stay queued forever. This library does not manage processor configuration.
+
+## Minimal payout (auto-approve)
+
+Server-side, the user never sees BTCPay:
+
+```ts
+app.post(
+  '/withdrawals',
+  BTCPayMiddleware.createPayout({
+    mapRequest: req => ({
+      destination: req.body.walletAddress,
+      amount: req.body.amount,
+      payoutMethodId: 'BTC-CHAIN',
+    }),
+  }),
+  (_req, res) => res.json(res.locals.btcpayResponse)
+);
+```
+
+`approved: true` is the default — the payout is created and approved in a single round-trip, then handed off to the configured processor.
+
+## Stamping metadata for reconciliation
+
+```ts
+BTCPayMiddleware.createPayout({
+  mapRequest: req => ({
+    destination: req.user.btcAddress,
+    amount: req.body.amount,
+    payoutMethodId: 'BTC-CHAIN',
+    metadata: {
+      userId: req.user.id,
+      referralMilestoneId: req.body.milestoneId,
+      source: 'referral-payout',
+    },
+  }),
+  transformResponse: payout => ({
+    payoutId: payout.id,
+    state: payout.state,
+  }),
+});
+```
+
+`metadata` is a transparent pass-through. It comes back on webhook events (so you can correlate `payoutId` to your internal `userId` / `milestoneId` without keeping a separate mapping table).
+
+## Manual approval flow (deferred approval)
+
+If a payout needs human review before going out, set `approved: false`. The payout lands in `AwaitingApproval` and stays there until you approve it externally (BTCPay UI or API).
+
+```ts
+BTCPayMiddleware.createPayout({
+  mapRequest: req => ({
+    destination: req.body.wallet,
+    amount: req.body.amount,
+    payoutMethodId: 'BTC-CHAIN',
+    approved: false,
+  }),
+});
+```
+
+This lib does not currently ship a dedicated `approvePayout` middleware — for the manual case, call the BTCPay endpoint directly or use `BTCPayClient` from a separate handler.
+
+## Lightning payout
+
+Use the appropriate `payoutMethodId`:
+
+```ts
+BTCPayMiddleware.createPayout({
+  mapRequest: req => ({
+    destination: req.body.lnurlOrBolt11,
+    amount: req.body.amount,
+    payoutMethodId: 'BTC-LN',
+  }),
+});
+```
+
+The destination can be a BOLT11 invoice, an LNURL, or a Lightning address — the processor figures out the form.
+
+## Listening to webhook events
+
+```ts
+import express from 'express';
+import {
+  BTCPayMiddleware,
+  BTCPayPayoutWebhookPayload,
+  PayoutState,
+} from '@taloon/btcpay-middleware';
+
+app.post(
+  '/webhooks/btcpay/payouts',
+  express.raw({ type: 'application/json' }),
+  BTCPayMiddleware.payoutWebhook({
+    onPayoutCreated: async payload => {
+      await db.payouts.markCreated(payload.payoutId, payload.metadata);
+    },
+    onPayoutApproved: async payload => {
+      await db.payouts.markApproved(payload.payoutId);
+    },
+    onPayoutUpdated: async (payload: BTCPayPayoutWebhookPayload) => {
+      switch (payload.payoutState) {
+        case PayoutState.IN_PROGRESS:
+          await db.payouts.markBroadcasting(payload.payoutId);
+          return;
+        case PayoutState.COMPLETED:
+          await db.payouts.markCompleted(payload.payoutId);
+          return;
+        case PayoutState.CANCELLED:
+          await db.payouts.markCancelled(payload.payoutId);
+          return;
+      }
+    },
+  })
+);
+```
+
+BTCPay only emits **three** events for payouts (`PayoutCreated`, `PayoutApproved`, `PayoutUpdated`). State transitions after approval (`AwaitingPayment → InProgress → Completed | Cancelled`) all arrive under `PayoutUpdated`. Inspect `payload.payoutState` and `payload.paymentProof` to drive the decision.
+
+## Polling a payout for reconciliation
+
+```ts
+import { BTCPayClient, BTCPayConfiguration, PayoutState } from '@taloon/btcpay-middleware';
+
+const client = BTCPayClient.fromConfig(BTCPayConfiguration.getConfig());
+
+export async function reconcile(payoutId: string) {
+  const payout = await client.getPayout(payoutId);
+  switch (payout.state) {
+    case PayoutState.COMPLETED: return 'paid';
+    case PayoutState.CANCELLED: return 'cancelled';
+    case PayoutState.AWAITING_APPROVAL: return 'pending-approval';
+    default: return 'in-flight';
+  }
+}
+```

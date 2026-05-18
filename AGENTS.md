@@ -17,12 +17,16 @@ A TypeScript Express middleware library for BTCPay Server integration with depen
 src/
 ├── client/BTCPayClient.ts            # axios wrapper + Authorization: token <apiKey>
 ├── config/BTCPayConfig.ts            # singleton + reset() for tests
-├── constants/statuses.ts             # InvoiceStatus + WebhookEventType enums
+├── constants/statuses.ts             # InvoiceStatus, PayoutState, PayoutMethod, WebhookEventType enums
 ├── middlewares/
 │   ├── base/BaseMiddleware.ts        # 3-tier handleError + saveToLocals
-│   ├── webhooks/invoiceWebhook.ts    # HMAC verify + event dispatch
+│   ├── webhooks/
+│   │   ├── invoiceWebhook.ts         # HMAC verify + invoice event dispatch
+│   │   └── payoutWebhook.ts          # HMAC verify + payout event dispatch
 │   ├── createInvoice.ts
-│   └── getInvoice.ts
+│   ├── getInvoice.ts
+│   ├── createPayout.ts
+│   └── getPayout.ts
 ├── types/                            # api.types, middleware.types, index
 ├── utils/
 │   ├── errors.ts                     # BTCPayError + 5 subclasses
@@ -41,12 +45,13 @@ src/
 
 ## Intentional differences
 
-1. **Invoice domain naming** (`createInvoice`, `invoiceWebhook`) — BTCPay organizes payment data under `paymentMethods` (per the Greenfield API). When `fetchPaymentMethods: true` is passed to `createInvoice`, the middleware fetches the invoice's payment methods and attaches them as `paymentMethods: BTCPayPaymentMethod[]` in `res.locals.btcpayResponse`. The library exposes the native BTCPay array; extracting `destination` (BTC address) or `amount` for a specific method (e.g., `BTC-CHAIN`) is the consumer's responsibility.
+1. **Invoice and payout domain naming** (`createInvoice`, `invoiceWebhook`, `createPayout`, `payoutWebhook`) — BTCPay organizes payment data under `paymentMethods` (per the Greenfield API). When `fetchPaymentMethods: true` is passed to `createInvoice`, the middleware fetches the invoice's payment methods and attaches them as `paymentMethods: BTCPayPaymentMethod[]` in `res.locals.btcpayResponse`. The library exposes the native BTCPay array; extracting `destination` (BTC address) or `amount` for a specific method (e.g., `BTC-CHAIN`) is the consumer's responsibility.
 2. **HMAC webhook signature is first-class.** When `webhookSecret` is configured, `invoiceWebhook` verifies `BTCPay-Sig: sha256=<hex>` over the raw body. This requires `express.raw({ type: 'application/json' })` upstream.
 3. **Client receives config explicitly** (`BTCPayClient.fromConfig(...)`) — no hidden coupling between client and singleton. The middlewares are the ones that read the singleton.
 4. **`res.locals.btcpayResponse`** namespace, so this package can coexist with `@taloon/nowpayments-middleware` in the same app.
 5. **No `auth/`, `decorators/RequiresAuth`, `totp.ts`, `dispersion/`** — BTCPay only needs a static API key.
-6. **No payouts in v0.1.0.** BTCPay's pull-payments model is not equivalent to NowPayments' push payouts; if needed, they will be added later as `createPullPayment` + `pullPaymentWebhook` with their own shape.
+6. **Payouts skip the pull-payment intermediary.** The endpoint `POST /api/v1/stores/{storeId}/payouts` accepts `pullPaymentId` as optional and supports `approved: true` for in-call auto-approval. The lib uses that path to expose a push-like flow (`createPayout`, `getPayout`, `payoutWebhook`) that is transparent to end-users. The consumer is expected to have a payout processor (`OnChainAutomatedPayoutSenderFactory` / `LightningAutomatedPayoutSenderFactory`) configured at the store level — without it, approved payouts queue indefinitely. Pull payments themselves are out of scope for this milestone.
+7. **Payout webhook payload shape is permissive.** BTCPay's Greenfield spec does not publish a dedicated schema for payout webhook payloads (no `WebhookPayoutEvent` analog to `WebhookInvoiceSettledEvent`). `BTCPayPayoutWebhookPayload` types base fields strictly and allows any extra field via `[key: string]: unknown`. Tighten the type when the contract is validated against a live instance.
 
 ## Code Standards
 
