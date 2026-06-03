@@ -1,0 +1,1 @@
+- [Payouts Investigation (2026-05-18)](payouts-research.md) — Payout endpoint schema, approval flow, pullPaymentId optionality, webhook events, processor behavior
